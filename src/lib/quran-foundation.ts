@@ -58,6 +58,10 @@ async function getAccessToken(): Promise<string> {
 export async function fetchQuranChapters() {
   const accessToken = await getAccessToken();
 
+  if (!accessToken) {
+    throw new Error("Missing Quran Foundation access token");
+  }
+
   // 2. Fetch Chapters via Content API
   const chaptersResponse = await fetch(API_URL, {
     method: 'GET',
@@ -99,6 +103,10 @@ export async function getArabicChapterAudio(surahNumber: number) {
   }
 
   const accessToken = await getAccessToken();
+
+  if (!accessToken) {
+    throw new Error("Missing Quran Foundation access token");
+  }
 
   // 2. Fetch Audio URL via Content API
   const audioUrlEndpoint = isPrelive 
