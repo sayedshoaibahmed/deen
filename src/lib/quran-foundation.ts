@@ -15,7 +15,7 @@ let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
 const audioUrlCache = new Map<number, string>();
 
-async function getAccessToken() {
+async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
@@ -43,15 +43,16 @@ async function getAccessToken() {
   }
 
   const tokenData = await tokenResponse.json();
-  if (!tokenData.access_token) {
-    throw new Error('Authentication succeeded but no access_token was returned');
+  if (!tokenData.access_token || typeof tokenData.access_token !== 'string') {
+    throw new Error('Authentication succeeded but no valid access_token was returned');
   }
 
-  cachedToken = tokenData.access_token;
+  const newToken = tokenData.access_token;
+  cachedToken = newToken;
   // Assume token is valid for 50 minutes (3000 seconds)
   tokenExpiresAt = Date.now() + (tokenData.expires_in ? tokenData.expires_in * 1000 : 3000000) - 60000;
   
-  return cachedToken;
+  return newToken;
 }
 
 export async function fetchQuranChapters() {
