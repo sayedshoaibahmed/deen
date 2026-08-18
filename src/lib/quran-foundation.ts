@@ -1,14 +1,18 @@
-const clientId = process.env.QF_CLIENT_ID || '';
-const clientSecret = process.env.QF_CLIENT_SECRET || '';
-const env = process.env.QF_ENV || 'prelive';
+function getEnvConfig() {
+  const clientId = process.env.QF_CLIENT_ID || '';
+  const clientSecret = process.env.QF_CLIENT_SECRET || '';
+  const env = process.env.QF_ENV || 'prelive';
+  
+  const isPrelive = env === 'prelive';
+  const OAUTH_URL = isPrelive 
+    ? 'https://prelive-oauth2.quran.foundation/oauth2/token' 
+    : 'https://oauth2.quran.foundation/oauth2/token';
+  const API_URL = isPrelive 
+    ? 'https://apis-prelive.quran.foundation/content/api/v4/chapters' 
+    : 'https://apis.quran.foundation/content/api/v4/chapters';
 
-const isPrelive = env === 'prelive';
-const OAUTH_URL = isPrelive 
-  ? 'https://prelive-oauth2.quran.foundation/oauth2/token' 
-  : 'https://oauth2.quran.foundation/oauth2/token';
-const API_URL = isPrelive 
-  ? 'https://apis-prelive.quran.foundation/content/api/v4/chapters' 
-  : 'https://apis.quran.foundation/content/api/v4/chapters';
+  return { clientId, clientSecret, env, isPrelive, OAUTH_URL, API_URL };
+}
 
 // Lightweight caching
 let cachedToken: string | null = null;
@@ -16,12 +20,14 @@ let tokenExpiresAt: number = 0;
 const audioUrlCache = new Map<number, string>();
 
 async function getAccessToken(): Promise<string> {
+  const { clientId, clientSecret, OAUTH_URL } = getEnvConfig();
+
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
 
   if (!clientId || !clientSecret) {
-    throw new Error('Missing QF_CLIENT_ID or QF_CLIENT_SECRET');
+    throw new Error(`Missing QF_CLIENT_ID or QF_CLIENT_SECRET`);
   }
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -56,6 +62,7 @@ async function getAccessToken(): Promise<string> {
 }
 
 export async function fetchQuranChapters() {
+  const { clientId, API_URL, env } = getEnvConfig();
   const accessToken = await getAccessToken();
 
   if (!accessToken) {
@@ -102,6 +109,7 @@ export async function getArabicChapterAudio(surahNumber: number) {
     };
   }
 
+  const { clientId, env, isPrelive } = getEnvConfig();
   const accessToken = await getAccessToken();
 
   if (!accessToken) {
