@@ -448,35 +448,44 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
         if (data.audioUrl) {
           if (audioRef.current.src !== data.audioUrl) {
-            setAudioError(null);
             audioRef.current.src = data.audioUrl;
-            setCurrentTime(0);
+            audioRef.current.load();
+          }
+          
+          setIsLoadingAudio(false); // Network fetch complete
 
-            const startArabicPlayback = () => {
-              applySeek();
-              setIsLoadingAudio(false);
-              if (isPlaying && active) {
-                audioRef.current!.play().catch(e => {
-                  if (e.name !== 'AbortError') {
-                    console.error('Arabic playback failed:', e);
-                    setAudioError('Playback failed or was interrupted');
-                  }
-                });
-              }
+          if (pendingSeekRef.current > 0) {
+            const seekTime = pendingSeekRef.current;
+            pendingSeekRef.current = 0;
+            const onLoadedMetaData = () => {
+              if (!active) return;
+              audioRef.current!.currentTime = seekTime;
+              setCurrentTime(seekTime);
+              audioRef.current!.removeEventListener('loadedmetadata', onLoadedMetaData);
             };
-
-            if (audioRef.current.readyState >= 2) {
-              startArabicPlayback();
-            } else {
-              const onCanPlay = () => {
-                if (!active) return;
-                audioRef.current!.removeEventListener('canplay', onCanPlay);
-                startArabicPlayback();
-              };
-              audioRef.current.addEventListener('canplay', onCanPlay);
-            }
+            audioRef.current.addEventListener('loadedmetadata', onLoadedMetaData);
           } else {
-            setIsLoadingAudio(false);
+            if (audioRef.current.readyState >= 1) {
+              audioRef.current.currentTime = 0;
+              setCurrentTime(0);
+            } else {
+              const onLoadedMetaData = () => {
+                if (!active) return;
+                audioRef.current!.currentTime = 0;
+                setCurrentTime(0);
+                audioRef.current!.removeEventListener('loadedmetadata', onLoadedMetaData);
+              };
+              audioRef.current.addEventListener('loadedmetadata', onLoadedMetaData);
+            }
+          }
+
+          if (isPlaying && active) {
+            audioRef.current.play().catch(e => {
+              if (e.name !== 'AbortError') {
+                console.error('Arabic playback failed:', e);
+                setAudioError('Playback failed or was interrupted');
+              }
+            });
           }
         } else {
           throw new Error('No audio URL in response');
