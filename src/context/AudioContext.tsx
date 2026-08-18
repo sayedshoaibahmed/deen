@@ -309,19 +309,23 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           if (!active) return;
           
           if (!res.ok) {
-            throw new Error(data.error || 'Failed to load audio');
+            throw new Error(data.details || data.error || 'Failed to load audio');
           }
           
           if (data.audioUrl) {
             if (audioRef.current.src !== data.audioUrl) {
+              setAudioError(null);
+              setIsLoadingAudio(true);
               audioRef.current.src = data.audioUrl;
               setCurrentTime(0);
 
               if (audioRef.current.readyState >= 1) {
                 applySeek();
+                setIsLoadingAudio(false);
               } else {
                 const onLoadedMetaData = () => {
                   applySeek();
+                  setIsLoadingAudio(false);
                   audioRef.current!.removeEventListener('loadedmetadata', onLoadedMetaData);
                 };
                 audioRef.current.addEventListener('loadedmetadata', onLoadedMetaData);

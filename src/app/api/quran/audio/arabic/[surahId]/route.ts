@@ -27,8 +27,9 @@ export async function GET(
     }
     
     // We do not leak secrets, just return a safe 500
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Failed to fetch Quran audio from the API.', status: 500 },
+      { error: 'Failed to fetch Quran audio from the API.', details: errorMessage, status: 500 },
       { status: 500 }
     );
   }
