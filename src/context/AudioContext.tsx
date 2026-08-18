@@ -268,14 +268,18 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           const ayahObj = englishQueue.find(a => a.ayah === currentAyahNumber);
           if (ayahObj) {
             if (audioRef.current.src !== ayahObj.audioUrl) {
+              setAudioError(null);
+              setIsLoadingAudio(true);
               audioRef.current.src = ayahObj.audioUrl;
               setCurrentTime(0);
 
               if (audioRef.current.readyState >= 1) {
                 applySeek();
+                setIsLoadingAudio(false);
               } else {
                 const onLoadedMetaData = () => {
                   applySeek();
+                  setIsLoadingAudio(false);
                   audioRef.current!.removeEventListener('loadedmetadata', onLoadedMetaData);
                 };
                 audioRef.current.addEventListener('loadedmetadata', onLoadedMetaData);
@@ -283,8 +287,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
               if (isPlaying) {
                 audioRef.current.play().catch(e => {
-                  console.error("Playback failed:", e);
-                  setAudioError("Playback failed or was interrupted");
+                  if (e.name !== 'AbortError') {
+                    console.error("Playback failed:", e);
+                    setAudioError("Playback failed or was interrupted");
+                  }
                 });
               }
             }
@@ -323,8 +329,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
               if (isPlaying) {
                 audioRef.current.play().catch(e => {
-                  console.error("Playback failed:", e);
-                  setAudioError("Playback failed or was interrupted");
+                  if (e.name !== 'AbortError') {
+                    console.error("Playback failed:", e);
+                    setAudioError("Playback failed or was interrupted");
+                  }
                 });
               }
             }
@@ -351,13 +359,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     };
   }, [currentSurahId, currentLanguage, retryCounter, englishQueue, currentAyahNumber]);
 
-  // Handle play/pause state syncing with the actual audio element
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying && audioRef.current.src) {
         audioRef.current.play().catch(e => {
-          console.error("Playback failed:", e);
-          setIsPlaying(false);
+          if (e.name !== 'AbortError') {
+            console.error("Playback failed:", e);
+            setIsPlaying(false);
+          }
         });
       } else {
         audioRef.current.pause();
