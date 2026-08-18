@@ -27,7 +27,10 @@ async function getAccessToken(): Promise<string> {
   }
 
   if (!clientId || !clientSecret) {
-    throw new Error(`Missing QF_CLIENT_ID or QF_CLIENT_SECRET`);
+    const missing = [];
+    if (!clientId) missing.push('QF_CLIENT_ID');
+    if (!clientSecret) missing.push('QF_CLIENT_SECRET');
+    throw new Error(`Missing Environment Variables: ${missing.join(' and ')}`);
   }
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
