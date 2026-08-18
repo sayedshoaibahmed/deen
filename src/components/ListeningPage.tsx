@@ -7,6 +7,7 @@ import { surahs } from '../data/surahs';
 import { useAudio } from '../context/AudioContext';
 
 import { ThemeToggle } from './ThemeToggle';
+import { TranslationCaption } from './TranslationCaption';
 
 interface ListeningPageProps {
   title: string;
@@ -20,6 +21,7 @@ export function ListeningPage({ title }: ListeningPageProps) {
   const { currentSurahId, currentLanguage, isPlaying, playSurah, togglePlayPause, savedProgress } = useAudio();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSurahId, setSelectedSurahId] = useState<number | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
 
   // Sync selectedSurahId with the currently playing Surah when it changes (e.g. auto-advance)
   React.useEffect(() => {
@@ -78,7 +80,7 @@ export function ListeningPage({ title }: ListeningPageProps) {
         </header>
 
         {/* Search */}
-        <div className="mb-10">
+        <div className="mb-4">
           <input
             type="text"
             placeholder="Search Surah..."
@@ -87,6 +89,40 @@ export function ListeningPage({ title }: ListeningPageProps) {
             className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl px-6 py-4 text-neutral-800 dark:text-neutral-200 outline-none focus:border-neutral-300 dark:focus:border-neutral-600 transition-colors placeholder:text-neutral-400 dark:placeholder:text-neutral-500 font-light"
           />
         </div>
+
+        {/* Translation toggle — English only */}
+        {!isArabic && (
+          <div className="flex items-center justify-end mb-6">
+            <button
+              id="translation-toggle"
+              role="switch"
+              aria-checked={showTranslation}
+              aria-label="Show English translation captions"
+              onClick={() => setShowTranslation((v) => !v)}
+              className="flex items-center gap-2 text-xs font-medium tracking-wide text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+            >
+              {/* Pill toggle */}
+              <span
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
+                  showTranslation
+                    ? 'bg-neutral-800 dark:bg-neutral-200'
+                    : 'bg-neutral-200 dark:bg-neutral-700'
+                }`}
+                aria-hidden="true"
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white dark:bg-neutral-900 transition-transform duration-200 ${
+                    showTranslation ? 'translate-x-4' : 'translate-x-0.5'
+                  }`}
+                />
+              </span>
+              Show English Translation
+            </button>
+          </div>
+        )}
+
+        {/* Translation caption — English only, controlled by toggle */}
+        {!isArabic && <TranslationCaption show={showTranslation} />}
 
         {/* Start Playing Button */}
         <div className="flex flex-col items-center justify-center mb-12 gap-4 h-[72px]">

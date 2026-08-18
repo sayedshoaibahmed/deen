@@ -12,14 +12,19 @@ export default function AttributionPage() {
         <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl p-8 md:p-12 text-left mb-8 transition-colors duration-500">
           <h2 className="text-xl font-medium mb-4">English Quran Translation & Audio</h2>
           <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed mb-6">
-            The English audio translation used in this application is provided by the Rowwad Translation Center.
+            The English audio translation and the Ayah-level translation captions used in this application are both provided by the Rowwad Translation Center, via QuranEnc.
           </p>
           <ul className="space-y-4 text-sm text-neutral-600 dark:text-neutral-400">
             <li>
               <strong className="text-neutral-900 dark:text-neutral-100">Translation:</strong> English Translation — Rowwad Translation Center
             </li>
             <li>
-              <strong className="text-neutral-900 dark:text-neutral-100">Source:</strong> <a href="https://quranenc.com" target="_blank" rel="noopener noreferrer" className="hover:text-black dark:hover:text-white underline decoration-neutral-300 dark:decoration-neutral-700 underline-offset-4 transition-colors">QuranEnc</a>
+              <strong className="text-neutral-900 dark:text-neutral-100">Audio & Text Source:</strong>{' '}
+              <a href="https://quranenc.com" target="_blank" rel="noopener noreferrer" className="hover:text-black dark:hover:text-white underline decoration-neutral-300 dark:decoration-neutral-700 underline-offset-4 transition-colors">QuranEnc</a>
+            </li>
+            <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Translation key:</strong>{' '}
+              <code className="text-xs font-mono bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">english_rwwad</code>
             </li>
           </ul>
         </div>
