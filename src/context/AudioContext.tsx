@@ -2,13 +2,18 @@
 
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { surahs } from '../data/surahs';
+import { getArabicSurahAyahAudio } from '../lib/quranenc';
 
-type Language = 'arabic' | 'english';
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type Language = 'arabic' | 'english' | 'combined';
 
 export type SavedProgress = {
   surahId: number;
   position: number;
   ayahId?: number;
+  /** For combined mode: which language half (Arabic or English) was playing */
+  combinedLang?: 'arabic' | 'english';
 };
 
 interface AudioContextType {
@@ -20,8 +25,12 @@ interface AudioContextType {
   savedProgress: Record<Language, SavedProgress | null>;
   isLoadingAudio: boolean;
   audioError: string | null;
-  englishQueue: {ayah: number, audioUrl: string}[] | null;
+  englishQueue: { ayah: number; audioUrl: string }[] | null;
+  /** Arabic per-Ayah queue — only populated in combined mode */
+  arabicAyahQueue: { ayah: number; audioUrl: string }[] | null;
   currentAyahNumber: number | null;
+  /** Which language half is currently active in combined mode; null otherwise */
+  combinedAyahLang: 'arabic' | 'english' | null;
   playSurah: (id: number, language: Language, startTime?: number) => void;
   togglePlayPause: () => void;
   playNext: () => void;
@@ -42,25 +51,34 @@ export function useAudio() {
   return context;
 }
 
+// ─── LocalStorage helpers ─────────────────────────────────────────────────────
+
 const STORAGE_KEY = 'quran_listening_progress';
 
 function loadProgressFromStorage(): Record<Language, SavedProgress | null> {
-  if (typeof window === 'undefined') return { arabic: null, english: null };
+  if (typeof window === 'undefined') return { arabic: null, english: null, combined: null };
   try {
     const data = localStorage.getItem(STORAGE_KEY);
     if (data) {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      return {
+        arabic: parsed.arabic ?? null,
+        english: parsed.english ?? null,
+        combined: parsed.combined ?? null,
+      };
     }
   } catch (e) {
     console.error('Failed to parse progress from localStorage', e);
   }
-  return { arabic: null, english: null };
+  return { arabic: null, english: null, combined: null };
 }
 
 function saveProgressToStorage(progress: Record<Language, SavedProgress | null>) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
 }
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [currentLanguage, setCurrentLanguage] = useState<Language | null>(null);
@@ -71,25 +89,45 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // isLoadingAudio = true ONLY when current audio cannot play yet (genuine stall)
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [englishQueue, setEnglishQueue] = useState<{ayah: number, audioUrl: string}[] | null>(null);
+  const [englishQueue, setEnglishQueue] = useState<{ ayah: number; audioUrl: string }[] | null>(null);
+  const [arabicAyahQueue, setArabicAyahQueue] = useState<{ ayah: number; audioUrl: string }[] | null>(null);
   const [currentAyahNumber, setCurrentAyahNumber] = useState<number | null>(null);
-  const [savedProgress, setSavedProgress] = useState<Record<Language, SavedProgress | null>>({ arabic: null, english: null });
+  const [combinedAyahLang, setCombinedAyahLang] = useState<'arabic' | 'english' | null>(null);
+  const [savedProgress, setSavedProgress] = useState<Record<Language, SavedProgress | null>>({
+    arabic: null, english: null, combined: null,
+  });
 
   // Refs
   const savedProgressRef = useRef(savedProgress);
   // Primary playback element
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  // Preload element for the NEXT English Ayah
+  // Preload element for the NEXT item in the queue
   const preloadRef = useRef<HTMLAudioElement | null>(null);
   const pendingSeekRef = useRef<number>(0);
   const lastSaveTimeRef = useRef(0);
   const [retryCounter, setRetryCounter] = useState(0);
 
   // Stable refs for event handler closures (avoids stale closure issues)
-  const stateRef = useRef({ currentLanguage, currentSurahId, currentAyahNumber, englishQueue, isPlaying });
+  const stateRef = useRef({
+    currentLanguage,
+    currentSurahId,
+    currentAyahNumber,
+    englishQueue,
+    isPlaying,
+    combinedAyahLang,
+    arabicAyahQueue,
+  });
   useEffect(() => {
-    stateRef.current = { currentLanguage, currentSurahId, currentAyahNumber, englishQueue, isPlaying };
-  }, [currentLanguage, currentSurahId, currentAyahNumber, englishQueue, isPlaying]);
+    stateRef.current = {
+      currentLanguage,
+      currentSurahId,
+      currentAyahNumber,
+      englishQueue,
+      isPlaying,
+      combinedAyahLang,
+      arabicAyahQueue,
+    };
+  }, [currentLanguage, currentSurahId, currentAyahNumber, englishQueue, isPlaying, combinedAyahLang, arabicAyahQueue]);
 
   // Load progress on mount
   useEffect(() => {
@@ -102,11 +140,23 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     savedProgressRef.current = savedProgress;
   }, [savedProgress]);
 
-  const retryAudio = () => setRetryCounter(c => c + 1);
+  const retryAudio = () => setRetryCounter((c) => c + 1);
 
-  const syncProgress = useCallback((lang: Language, surahId: number, time: number, ayahId?: number) => {
+  const syncProgress = useCallback((
+    lang: Language,
+    surahId: number,
+    time: number,
+    ayahId?: number,
+    combinedLang?: 'arabic' | 'english',
+  ) => {
     setSavedProgress((prev) => {
-      const next = { ...prev, [lang]: { surahId, position: time, ayahId } };
+      const entry: SavedProgress = {
+        surahId,
+        position: time,
+        ...(ayahId !== undefined ? { ayahId } : {}),
+        ...(combinedLang !== undefined ? { combinedLang } : {}),
+      };
+      const next = { ...prev, [lang]: entry };
       saveProgressToStorage(next);
       return next;
     });
@@ -114,26 +164,29 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // PRELOADING HELPER
-  // Preloads the next Ayah URL into preloadRef so it is buffered ahead of time.
+  // Preloads the next queue item into preloadRef so it is buffered ahead of time.
   // Does NOT affect the loading state shown to the user.
   // ─────────────────────────────────────────────────────────────────────────
-  const preloadNextAyah = useCallback((queue: {ayah: number, audioUrl: string}[], nextAyahNumber: number) => {
-    const nextAyah = queue.find(a => a.ayah === nextAyahNumber);
-    if (!nextAyah) return;
+  const preloadNextAyah = useCallback(
+    (queue: { ayah: number; audioUrl: string }[], nextAyahNumber: number) => {
+      const nextAyah = queue.find((a) => a.ayah === nextAyahNumber);
+      if (!nextAyah) return;
 
-    if (!preloadRef.current) {
-      preloadRef.current = new Audio();
-      preloadRef.current.preload = 'auto';
-    }
+      if (!preloadRef.current) {
+        preloadRef.current = new Audio();
+        preloadRef.current.preload = 'auto';
+      }
 
-    const preload = preloadRef.current;
-    // Only reload if URL changed
-    if (preload.src !== nextAyah.audioUrl) {
-      preload.src = nextAyah.audioUrl;
-      preload.load();
-      console.log(`[Preload] Preloading Ayah ${nextAyahNumber}: ${nextAyah.audioUrl}`);
-    }
-  }, []);
+      const preload = preloadRef.current;
+      // Only reload if URL changed
+      if (preload.src !== nextAyah.audioUrl) {
+        preload.src = nextAyah.audioUrl;
+        preload.load();
+        console.log(`[Preload] Preloading Ayah ${nextAyahNumber}: ${nextAyah.audioUrl}`);
+      }
+    },
+    [],
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // MAIN AUDIO EVENT LISTENERS (mount once)
@@ -156,22 +209,34 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             state.currentLanguage,
             state.currentSurahId,
             audio.currentTime,
-            state.currentLanguage === 'english' ? (state.currentAyahNumber || undefined) : undefined
+            (state.currentLanguage === 'english' || state.currentLanguage === 'combined')
+              ? (state.currentAyahNumber || undefined)
+              : undefined,
+            state.currentLanguage === 'combined'
+              ? (state.combinedAyahLang || undefined)
+              : undefined,
           );
           lastSaveTimeRef.current = now;
         }
 
-        // Preload next ayah when 10 seconds remain on current ayah
-        if (
-          state.currentLanguage === 'english' &&
-          state.englishQueue &&
-          state.currentAyahNumber &&
-          audio.duration &&
-          audio.duration - audio.currentTime < 10
-        ) {
-          const nextAyahNum = state.currentAyahNumber + 1;
-          if (nextAyahNum <= state.englishQueue.length) {
-            preloadNextAyah(state.englishQueue, nextAyahNum);
+        // Preload next item when 10 seconds remain on current
+        if (audio.duration && audio.duration - audio.currentTime < 10) {
+          if (state.currentLanguage === 'english' && state.englishQueue && state.currentAyahNumber) {
+            const nextAyahNum = state.currentAyahNumber + 1;
+            if (nextAyahNum <= state.englishQueue.length) {
+              preloadNextAyah(state.englishQueue, nextAyahNum);
+            }
+          } else if (state.currentLanguage === 'combined' && state.currentAyahNumber) {
+            if (state.combinedAyahLang === 'arabic' && state.englishQueue) {
+              // While Arabic N plays → preload English N
+              preloadNextAyah(state.englishQueue, state.currentAyahNumber);
+            } else if (state.combinedAyahLang === 'english' && state.arabicAyahQueue) {
+              // While English N plays → preload Arabic N+1
+              const nextAyahNum = state.currentAyahNumber + 1;
+              if (nextAyahNum <= state.arabicAyahQueue.length) {
+                preloadNextAyah(state.arabicAyahQueue, nextAyahNum);
+              }
+            }
           }
         }
       }
@@ -196,21 +261,109 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       const state = stateRef.current;
       if (!state.currentLanguage || !state.currentSurahId) return;
 
-      if (state.currentLanguage === 'english') {
-        if (state.englishQueue && state.currentAyahNumber) {
-          const nextAyah = state.currentAyahNumber + 1;
+      // ── COMBINED MODE ───────────────────────────────────────────────────
+      if (state.currentLanguage === 'combined') {
+        const {
+          combinedAyahLang: lang,
+          arabicAyahQueue: arQueue,
+          englishQueue: enQueue,
+          currentAyahNumber: ayahNum,
+          currentSurahId: surahId,
+        } = state;
 
-          if (nextAyah <= state.englishQueue.length) {
-            // ── Swap preloaded audio into primary element ──────────────────
-            const nextAyahObj = state.englishQueue.find(a => a.ayah === nextAyah);
-            if (nextAyahObj && preloadRef.current && preloadRef.current.src === nextAyahObj.audioUrl) {
-              // The next ayah was preloaded - swap src directly for instant start
+        if (!ayahNum) return;
+
+        const totalAyahs = arQueue?.length || enQueue?.length || 0;
+
+        if (lang === 'arabic') {
+          // Arabic N ended → play English N
+          const englishAyahObj = enQueue?.find((a) => a.ayah === ayahNum);
+
+          // Preload swap: if English N was already buffered, play immediately
+          if (
+            englishAyahObj &&
+            preloadRef.current &&
+            preloadRef.current.src === englishAyahObj.audioUrl
+          ) {
+            const preloadedSrc = preloadRef.current.src;
+            if (audioRef.current && audioRef.current.src !== preloadedSrc) {
+              audioRef.current.src = preloadedSrc;
+              setCurrentTime(0);
+              setIsLoadingAudio(false);
+              audioRef.current.play().catch((e) => {
+                if (e.name !== 'AbortError') setAudioError('Playback failed or was interrupted');
+              });
+            }
+          }
+
+          syncProgress('combined', surahId, 0, ayahNum, 'english');
+          setCombinedAyahLang('english');
+          // currentAyahNumber stays the same
+
+        } else {
+          // English N ended → Arabic N+1 (or next Surah)
+          const nextAyah = ayahNum + 1;
+
+          if (nextAyah <= totalAyahs) {
+            const arabicAyahObj = arQueue?.find((a) => a.ayah === nextAyah);
+
+            // Preload swap: if Arabic N+1 was already buffered, play immediately
+            if (
+              arabicAyahObj &&
+              preloadRef.current &&
+              preloadRef.current.src === arabicAyahObj.audioUrl
+            ) {
               const preloadedSrc = preloadRef.current.src;
               if (audioRef.current && audioRef.current.src !== preloadedSrc) {
                 audioRef.current.src = preloadedSrc;
                 setCurrentTime(0);
                 setIsLoadingAudio(false);
-                audioRef.current.play().catch(e => {
+                audioRef.current.play().catch((e) => {
+                  if (e.name !== 'AbortError') setAudioError('Playback failed or was interrupted');
+                });
+              }
+            }
+
+            syncProgress('combined', surahId, 0, nextAyah, 'arabic');
+            setCombinedAyahLang('arabic');
+            setCurrentAyahNumber(nextAyah);
+
+          } else {
+            // Last Ayah of Surah → advance to next Surah
+            if (surahId < 114) {
+              syncProgress('combined', surahId + 1, 0, 1, 'arabic');
+              setCombinedAyahLang('arabic');
+              setCurrentAyahNumber(null);
+              setEnglishQueue(null);
+              setArabicAyahQueue(null);
+              setCurrentSurahId(surahId + 1);
+            } else {
+              setIsPlaying(false);
+            }
+          }
+        }
+        return;
+      }
+
+      // ── ENGLISH MODE ────────────────────────────────────────────────────
+      if (state.currentLanguage === 'english') {
+        if (state.englishQueue && state.currentAyahNumber) {
+          const nextAyah = state.currentAyahNumber + 1;
+
+          if (nextAyah <= state.englishQueue.length) {
+            // Preload swap
+            const nextAyahObj = state.englishQueue.find((a) => a.ayah === nextAyah);
+            if (
+              nextAyahObj &&
+              preloadRef.current &&
+              preloadRef.current.src === nextAyahObj.audioUrl
+            ) {
+              const preloadedSrc = preloadRef.current.src;
+              if (audioRef.current && audioRef.current.src !== preloadedSrc) {
+                audioRef.current.src = preloadedSrc;
+                setCurrentTime(0);
+                setIsLoadingAudio(false);
+                audioRef.current.play().catch((e) => {
                   if (e.name !== 'AbortError') {
                     console.error('Preloaded playback failed:', e);
                     setAudioError('Playback failed or was interrupted');
@@ -218,7 +371,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
                 });
               }
             }
-            // ──────────────────────────────────────────────────────────────
 
             syncProgress('english', state.currentSurahId, 0, nextAyah);
             setCurrentAyahNumber(nextAyah);
@@ -234,14 +386,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             }
           }
         }
+        return;
+      }
+
+      // ── ARABIC MODE (whole-Surah) ────────────────────────────────────────
+      if (state.currentSurahId < 114) {
+        syncProgress('arabic', state.currentSurahId + 1, 0);
+        setCurrentSurahId(state.currentSurahId + 1);
       } else {
-        // Arabic: Surah-level progression
-        if (state.currentSurahId < 114) {
-          syncProgress('arabic', state.currentSurahId + 1, 0);
-          setCurrentSurahId(state.currentSurahId + 1);
-        } else {
-          setIsPlaying(false);
-        }
+        setIsPlaying(false);
       }
     };
 
@@ -262,7 +415,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           state.currentLanguage,
           state.currentSurahId,
           audio.currentTime,
-          state.currentLanguage === 'english' ? (state.currentAyahNumber || undefined) : undefined
+          (state.currentLanguage === 'english' || state.currentLanguage === 'combined')
+            ? (state.currentAyahNumber || undefined)
+            : undefined,
+          state.currentLanguage === 'combined'
+            ? (state.combinedAyahLang || undefined)
+            : undefined,
         );
       }
     };
@@ -293,51 +451,85 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         currentLanguage,
         currentSurahId,
         audioRef.current.currentTime,
-        currentLanguage === 'english' ? (currentAyahNumber || undefined) : undefined
+        (currentLanguage === 'english' || currentLanguage === 'combined')
+          ? (currentAyahNumber || undefined)
+          : undefined,
+        currentLanguage === 'combined' ? (combinedAyahLang || undefined) : undefined,
       );
     }
-  }, [isPlaying, currentLanguage, currentSurahId, currentAyahNumber, syncProgress]);
+  }, [isPlaying, currentLanguage, currentSurahId, currentAyahNumber, combinedAyahLang, syncProgress]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FETCH ENGLISH QUEUE (once per Surah, not per Ayah)
+  // FETCH QUEUES (English + Arabic per-Ayah for combined mode)
+  // Runs once per Surah change, not per Ayah.
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
 
-    if (currentLanguage === 'english' && currentSurahId) {
+    if ((currentLanguage === 'english' || currentLanguage === 'combined') && currentSurahId) {
       setAudioError(null);
 
-      async function fetchQueue() {
+      // For combined: compute Arabic ayah queue synchronously (deterministic URLs, no fetch needed)
+      if (currentLanguage === 'combined') {
+        setArabicAyahQueue(getArabicSurahAyahAudio(currentSurahId));
+      } else {
+        setArabicAyahQueue(null);
+      }
+
+      async function fetchEnglishQueue() {
         // Only show loading if we truly have nothing queued yet
         if (!englishQueue) setIsLoadingAudio(true);
         try {
-          const res = await fetch(`/api/quran/audio/english/${currentSurahId}`, { signal: controller.signal });
+          const res = await fetch(`/api/quran/audio/english/${currentSurahId}`, {
+            signal: controller.signal,
+          });
           const data = await res.json();
           if (!active) return;
           if (!res.ok) throw new Error(data.error || 'Failed to load English audio');
+
           if (data.ayahs) {
             setEnglishQueue(data.ayahs);
-            // Restore saved Ayah position or start from 1
-            if (!currentAyahNumber || currentSurahId !== savedProgressRef.current.english?.surahId) {
-              const saved = savedProgressRef.current.english;
-              setCurrentAyahNumber(saved?.surahId === currentSurahId && saved.ayahId ? saved.ayahId : 1);
+
+            if (currentLanguage === 'english') {
+              // Restore saved Ayah position or start from 1
+              if (!currentAyahNumber || currentSurahId !== savedProgressRef.current.english?.surahId) {
+                const saved = savedProgressRef.current.english;
+                setCurrentAyahNumber(
+                  saved?.surahId === currentSurahId && saved.ayahId ? saved.ayahId : 1,
+                );
+              }
+            } else if (currentLanguage === 'combined') {
+              // Only set from saved progress if ayah not yet established
+              if (!currentAyahNumber) {
+                const saved = savedProgressRef.current.combined;
+                const startAyah =
+                  saved?.surahId === currentSurahId && saved.ayahId ? saved.ayahId : 1;
+                const startLang: 'arabic' | 'english' =
+                  saved?.surahId === currentSurahId && saved.combinedLang
+                    ? saved.combinedLang
+                    : 'arabic';
+                setCurrentAyahNumber(startAyah);
+                setCombinedAyahLang(startLang);
+              }
             }
           }
         } catch (err: unknown) {
           if (!active) return;
           if (err instanceof Error && err.name === 'AbortError') return;
           console.error(err);
-          setAudioError(err instanceof Error ? err.message : 'Failed to load English audio');
+          setAudioError(err instanceof Error ? err.message : 'Failed to load audio');
           setIsPlaying(false);
         } finally {
           if (active) setIsLoadingAudio(false);
         }
       }
 
-      fetchQueue();
-    } else if (currentLanguage !== 'english') {
+      fetchEnglishQueue();
+    } else if (currentLanguage !== 'english' && currentLanguage !== 'combined') {
+      // Arabic-only mode: clear both per-Ayah queues
       setEnglishQueue(null);
+      setArabicAyahQueue(null);
     }
 
     return () => {
@@ -348,9 +540,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, [currentSurahId, currentLanguage, retryCounter]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LOAD AUDIO – fires when Ayah changes (English) or Surah changes (Arabic)
-  // For English: does NOT set isLoadingAudio unless the preload element
-  //              hasn't buffered yet, keeping the UI clean between Ayahs.
+  // LOAD AUDIO – fires when Ayah / Surah / Language changes
+  // For ayah-based modes (English, Combined): does NOT set isLoadingAudio
+  //   unless the preload element hasn't buffered yet, keeping the UI clean.
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
@@ -367,22 +559,93 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     async function loadAudio() {
       if (!currentSurahId || !currentLanguage || !audioRef.current) return;
 
+      // ── COMBINED ──────────────────────────────────────────────────────────
+      if (currentLanguage === 'combined') {
+        if (!currentAyahNumber || !combinedAyahLang) return;
+
+        const currentQueue =
+          combinedAyahLang === 'arabic' ? arabicAyahQueue : englishQueue;
+        if (!currentQueue) return;
+
+        const ayahObj = currentQueue.find((a) => a.ayah === currentAyahNumber);
+        if (!ayahObj) return;
+
+        const preload = preloadRef.current;
+        const preloadHasIt =
+          preload && preload.src === ayahObj.audioUrl && preload.readyState >= 2;
+
+        if (audioRef.current.src === ayahObj.audioUrl) {
+          // Already loaded – just play
+          applySeek();
+          if (isPlaying) {
+            audioRef.current.play().catch((e) => {
+              if (e.name !== 'AbortError') setAudioError('Playback failed');
+            });
+          }
+          return;
+        }
+
+        // Switch src. Only show loading state if the preload element isn't ready
+        setAudioError(null);
+        if (!preloadHasIt) setIsLoadingAudio(true);
+
+        audioRef.current.src = ayahObj.audioUrl;
+        setCurrentTime(0);
+
+        const startPlayback = () => {
+          applySeek();
+          setIsLoadingAudio(false);
+          if (isPlaying && active) {
+            audioRef.current!.play().catch((e) => {
+              if (e.name !== 'AbortError') {
+                console.error('Combined playback failed:', e);
+                setAudioError('Playback failed or was interrupted');
+              }
+            });
+          }
+        };
+
+        if (preloadHasIt || audioRef.current.readyState >= 2) {
+          startPlayback();
+        } else {
+          const onCanPlay = () => {
+            if (!active) return;
+            audioRef.current!.removeEventListener('canplay', onCanPlay);
+            startPlayback();
+          };
+          audioRef.current.addEventListener('canplay', onCanPlay);
+        }
+
+        // Preload next item immediately
+        if (combinedAyahLang === 'arabic' && englishQueue) {
+          // While Arabic N plays → preload English N
+          preloadNextAyah(englishQueue, currentAyahNumber);
+        } else if (combinedAyahLang === 'english' && arabicAyahQueue) {
+          // While English N plays → preload Arabic N+1
+          const nextAyahNum = currentAyahNumber + 1;
+          if (nextAyahNum <= arabicAyahQueue.length) {
+            preloadNextAyah(arabicAyahQueue, nextAyahNum);
+          }
+        }
+        return;
+      }
+
       // ── ENGLISH ──────────────────────────────────────────────────────────
       if (currentLanguage === 'english') {
         if (!englishQueue || !currentAyahNumber) return;
 
-        const ayahObj = englishQueue.find(a => a.ayah === currentAyahNumber);
+        const ayahObj = englishQueue.find((a) => a.ayah === currentAyahNumber);
         if (!ayahObj) return;
 
-        // Check if preloaded element already has this URL ready
         const preload = preloadRef.current;
-        const preloadHasIt = preload && preload.src === ayahObj.audioUrl && preload.readyState >= 2;
+        const preloadHasIt =
+          preload && preload.src === ayahObj.audioUrl && preload.readyState >= 2;
 
         if (audioRef.current.src === ayahObj.audioUrl) {
           // Already loaded – just apply seek and play
           applySeek();
           if (isPlaying) {
-            audioRef.current.play().catch(e => {
+            audioRef.current.play().catch((e) => {
               if (e.name !== 'AbortError') setAudioError('Playback failed');
             });
           }
@@ -402,7 +665,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           applySeek();
           setIsLoadingAudio(false);
           if (isPlaying && active) {
-            audioRef.current!.play().catch(e => {
+            audioRef.current!.play().catch((e) => {
               if (e.name !== 'AbortError') {
                 console.error('English playback failed:', e);
                 setAudioError('Playback failed or was interrupted');
@@ -412,10 +675,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         };
 
         if (preloadHasIt || audioRef.current.readyState >= 2) {
-          // Already buffered (via preload swap or cached) – start immediately
           startPlayback();
         } else {
-          // Wait for canplay – faster than loadedmetadata for starting playback
           const onCanPlay = () => {
             if (!active) return;
             audioRef.current!.removeEventListener('canplay', onCanPlay);
@@ -424,7 +685,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           audioRef.current.addEventListener('canplay', onCanPlay);
         }
 
-        // Preload the NEXT ayah immediately
+        // Preload next Ayah immediately
         const nextAyahNum = currentAyahNumber + 1;
         if (nextAyahNum <= englishQueue.length) {
           preloadNextAyah(englishQueue, nextAyahNum);
@@ -432,12 +693,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // ── ARABIC ───────────────────────────────────────────────────────────
+      // ── ARABIC (whole-Surah) ─────────────────────────────────────────────
       setIsLoadingAudio(true);
       setAudioError(null);
 
       try {
-        const res = await fetch(`/api/quran/audio/arabic/${currentSurahId}`, { signal: controller.signal });
+        const res = await fetch(`/api/quran/audio/arabic/${currentSurahId}`, {
+          signal: controller.signal,
+        });
         const data = await res.json();
 
         if (!active) return;
@@ -451,7 +714,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             audioRef.current.src = data.audioUrl;
             audioRef.current.load();
           }
-          
+
           setIsLoadingAudio(false); // Network fetch complete
 
           if (pendingSeekRef.current > 0) {
@@ -480,7 +743,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           }
 
           if (isPlaying && active) {
-            audioRef.current.play().catch(e => {
+            audioRef.current.play().catch((e) => {
               if (e.name !== 'AbortError') {
                 console.error('Arabic playback failed:', e);
                 setAudioError('Playback failed or was interrupted');
@@ -494,7 +757,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         if (!active) return;
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error(err);
-        setAudioError(err instanceof Error ? (err.message || 'Error loading audio') : 'Error loading audio');
+        setAudioError(
+          err instanceof Error ? err.message || 'Error loading audio' : 'Error loading audio',
+        );
         setIsPlaying(false);
         setIsLoadingAudio(false);
       }
@@ -506,9 +771,17 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       active = false;
       controller.abort();
     };
-  // isPlaying is intentionally included so playback resumes after pause
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSurahId, currentLanguage, retryCounter, englishQueue, currentAyahNumber, preloadNextAyah]);
+  }, [
+    currentSurahId,
+    currentLanguage,
+    retryCounter,
+    englishQueue,
+    currentAyahNumber,
+    preloadNextAyah,
+    combinedAyahLang,
+    arabicAyahQueue,
+  ]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // PLAY / PAUSE sync
@@ -516,7 +789,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!audioRef.current) return;
     if (isPlaying && audioRef.current.src) {
-      audioRef.current.play().catch(e => {
+      audioRef.current.play().catch((e) => {
         if (e.name !== 'AbortError') {
           console.error('Play/pause failed:', e);
           setIsPlaying(false);
@@ -531,13 +804,22 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // PUBLIC API
   // ─────────────────────────────────────────────────────────────────────────
   const playSurah = (id: number, language: Language, startTime: number = 0) => {
+    // Save progress for the currently playing item before switching
     if (currentLanguage && currentSurahId && audioRef.current) {
-      syncProgress(currentLanguage, currentSurahId, audioRef.current.currentTime, currentLanguage === 'english' ? (currentAyahNumber || undefined) : undefined);
+      syncProgress(
+        currentLanguage,
+        currentSurahId,
+        audioRef.current.currentTime,
+        (currentLanguage === 'english' || currentLanguage === 'combined')
+          ? (currentAyahNumber || undefined)
+          : undefined,
+        currentLanguage === 'combined' ? (combinedAyahLang || undefined) : undefined,
+      );
       audioRef.current.pause();
       audioRef.current.removeAttribute('src');
       audioRef.current.load();
     }
-    // Clear preload element on explicit Surah change
+    // Clear preload element on explicit Surah/mode change
     if (preloadRef.current) {
       preloadRef.current.src = '';
       preloadRef.current.load();
@@ -549,22 +831,37 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setCurrentSurahId(id);
     setCurrentAyahNumber(null);
     setEnglishQueue(null);
+    setArabicAyahQueue(null);
+    setCombinedAyahLang('arabic'); // always start from Arabic half in combined
     setIsPlaying(true);
   };
 
   const togglePlayPause = () => {
-    if (currentSurahId) setIsPlaying(prev => !prev);
+    if (currentSurahId) setIsPlaying((prev) => !prev);
   };
 
   const playNext = () => {
     if (currentSurahId !== null && currentSurahId < 114 && currentLanguage) {
       if (audioRef.current) {
-        syncProgress(currentLanguage, currentSurahId, audioRef.current.currentTime, currentLanguage === 'english' ? (currentAyahNumber || undefined) : undefined);
+        syncProgress(
+          currentLanguage,
+          currentSurahId,
+          audioRef.current.currentTime,
+          (currentLanguage === 'english' || currentLanguage === 'combined')
+            ? (currentAyahNumber || undefined)
+            : undefined,
+          currentLanguage === 'combined' ? (combinedAyahLang || undefined) : undefined,
+        );
       }
-      if (preloadRef.current) { preloadRef.current.src = ''; preloadRef.current.load(); }
+      if (preloadRef.current) {
+        preloadRef.current.src = '';
+        preloadRef.current.load();
+      }
       setCurrentSurahId(currentSurahId + 1);
       setCurrentAyahNumber(null);
       setEnglishQueue(null);
+      setArabicAyahQueue(null);
+      setCombinedAyahLang('arabic');
       setIsPlaying(true);
     }
   };
@@ -572,12 +869,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const playPrevious = () => {
     if (currentSurahId !== null && currentSurahId > 1 && currentLanguage) {
       if (audioRef.current) {
-        syncProgress(currentLanguage, currentSurahId, audioRef.current.currentTime, currentLanguage === 'english' ? (currentAyahNumber || undefined) : undefined);
+        syncProgress(
+          currentLanguage,
+          currentSurahId,
+          audioRef.current.currentTime,
+          (currentLanguage === 'english' || currentLanguage === 'combined')
+            ? (currentAyahNumber || undefined)
+            : undefined,
+          currentLanguage === 'combined' ? (combinedAyahLang || undefined) : undefined,
+        );
       }
-      if (preloadRef.current) { preloadRef.current.src = ''; preloadRef.current.load(); }
+      if (preloadRef.current) {
+        preloadRef.current.src = '';
+        preloadRef.current.load();
+      }
       setCurrentSurahId(currentSurahId - 1);
       setCurrentAyahNumber(null);
       setEnglishQueue(null);
+      setArabicAyahQueue(null);
+      setCombinedAyahLang('arabic');
       setIsPlaying(true);
     }
   };
@@ -587,7 +897,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
       if (currentLanguage && currentSurahId) {
-        syncProgress(currentLanguage, currentSurahId, time, currentLanguage === 'english' ? (currentAyahNumber || undefined) : undefined);
+        syncProgress(
+          currentLanguage,
+          currentSurahId,
+          time,
+          (currentLanguage === 'english' || currentLanguage === 'combined')
+            ? (currentAyahNumber || undefined)
+            : undefined,
+          currentLanguage === 'combined' ? (combinedAyahLang || undefined) : undefined,
+        );
       }
     }
   };
@@ -607,7 +925,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         isLoadingAudio,
         audioError,
         englishQueue,
+        arabicAyahQueue,
         currentAyahNumber,
+        combinedAyahLang,
         playSurah,
         togglePlayPause,
         playNext,

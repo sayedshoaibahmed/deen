@@ -39,3 +39,31 @@ export function getEnglishSurahAudio(surahNumber: number): AyahAudio[] {
 
   return ayahs;
 }
+
+/**
+ * Returns the ordered per-Ayah Arabic recitation audio sources for a requested Surah.
+ * Uses the EveryAyah CDN — Mishary Rashid Al-Afasy (same reciter as existing Arabic integration).
+ * URL structure: https://everyayah.com/data/Alafasy_128kbps/{sura_3digits}{aya_3digits}.mp3
+ *
+ * Used exclusively for the "Arabic + English" combined listening mode.
+ * The existing whole-Surah Arabic playback (from Quran Foundation) is unaffected.
+ */
+export function getArabicSurahAyahAudio(surahNumber: number): AyahAudio[] {
+  if (surahNumber < 1 || surahNumber > 114) {
+    throw { status: 400, message: 'Invalid Surah ID' };
+  }
+
+  const count = SURAH_AYAH_COUNTS[surahNumber - 1];
+  const s = String(surahNumber).padStart(3, '0');
+
+  const ayahs: AyahAudio[] = [];
+  for (let i = 1; i <= count; i++) {
+    const a = String(i).padStart(3, '0');
+    ayahs.push({
+      ayah: i,
+      audioUrl: `https://everyayah.com/data/Alafasy_128kbps/${s}${a}.mp3`
+    });
+  }
+
+  return ayahs;
+}

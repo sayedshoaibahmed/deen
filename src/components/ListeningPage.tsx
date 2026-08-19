@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { surahs } from '../data/surahs';
 import { useAudio } from '../context/AudioContext';
+import type { Language, SavedProgress } from '../context/AudioContext';
 
 import { ThemeToggle } from './ThemeToggle';
 import { TranslationCaption } from './TranslationCaption';
@@ -15,20 +16,24 @@ interface ListeningPageProps {
 
 export function ListeningPage({ title }: ListeningPageProps) {
   const pathname = usePathname();
-  const isArabic = pathname.includes('/arabic');
-  const language = isArabic ? 'arabic' : 'english';
+  const mode: Language = pathname.includes('/arabic')
+    ? 'arabic'
+    : pathname.includes('/combined')
+    ? 'combined'
+    : 'english';
 
-  const { currentSurahId, currentLanguage, isPlaying, playSurah, togglePlayPause, savedProgress } = useAudio();
+  const { currentSurahId, currentLanguage, isPlaying, playSurah, togglePlayPause, savedProgress } =
+    useAudio();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSurahId, setSelectedSurahId] = useState<number | null>(null);
   const [showTranslation, setShowTranslation] = useState(false);
 
   // Sync selectedSurahId with the currently playing Surah when it changes (e.g. auto-advance)
   React.useEffect(() => {
-    if (currentSurahId !== null && currentLanguage === language) {
+    if (currentSurahId !== null && currentLanguage === mode) {
       setSelectedSurahId(currentSurahId);
     }
-  }, [currentSurahId, currentLanguage, language]);
+  }, [currentSurahId, currentLanguage, mode]);
 
   const filteredSurahs = surahs.filter((surah) => {
     const q = searchQuery.toLowerCase();
@@ -41,13 +46,28 @@ export function ListeningPage({ title }: ListeningPageProps) {
 
   const handleSurahClick = (id: number) => {
     setSelectedSurahId(id);
-    playSurah(id, language);
+    playSurah(id, mode);
+  };
+
+  // ── Resume/Start button helper ────────────────────────────────────────────
+  const progress: SavedProgress | null = savedProgress[mode];
+  const progressSurah = progress ? surahs.find((s) => s.id === progress.surahId) : null;
+  const isCurrentModeActive = currentSurahId !== null && currentLanguage === mode;
+
+  const resumeSubtitle = (p: SavedProgress): string => {
+    if (mode === 'combined' && p.ayahId) {
+      const langLabel = p.combinedLang === 'english' ? 'English' : 'Arabic';
+      return `Ayah ${p.ayahId} · ${langLabel}`;
+    }
+    return `${Math.floor(p.position / 60)}:${Math.floor(p.position % 60)
+      .toString()
+      .padStart(2, '0')}`;
   };
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-32 transition-colors duration-500">
       <div className="max-w-3xl mx-auto px-6 py-12 relative">
-        
+
         {/* Theme Toggle */}
         <div className="absolute top-8 right-6">
           <ThemeToggle />
@@ -61,22 +81,44 @@ export function ListeningPage({ title }: ListeningPageProps) {
 
           <h1 className="text-2xl font-light text-neutral-800 dark:text-neutral-200 mb-6">{title}</h1>
 
-          {/* Compact Language Switcher */}
-          <div className="flex items-center gap-4 text-sm font-medium tracking-wide">
-            <Link 
-              href="/listen/arabic" 
-              className={`transition-colors ${isArabic ? 'text-foreground' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'}`}
+          {/* Compact Language / Mode Switcher */}
+          <nav aria-label="Listening mode" className="flex items-center gap-4 text-sm font-medium tracking-wide">
+            <Link
+              href="/listen/arabic"
+              aria-current={mode === 'arabic' ? 'page' : undefined}
+              className={`transition-colors ${
+                mode === 'arabic'
+                  ? 'text-foreground'
+                  : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+              }`}
             >
               Arabic
             </Link>
-            <span className="text-neutral-300 dark:text-neutral-700">|</span>
-            <Link 
-              href="/listen/english" 
-              className={`transition-colors ${!isArabic ? 'text-foreground' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'}`}
+            <span className="text-neutral-300 dark:text-neutral-700" aria-hidden="true">|</span>
+            <Link
+              href="/listen/english"
+              aria-current={mode === 'english' ? 'page' : undefined}
+              className={`transition-colors ${
+                mode === 'english'
+                  ? 'text-foreground'
+                  : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+              }`}
             >
               English
             </Link>
-          </div>
+            <span className="text-neutral-300 dark:text-neutral-700" aria-hidden="true">|</span>
+            <Link
+              href="/listen/combined"
+              aria-current={mode === 'combined' ? 'page' : undefined}
+              className={`transition-colors ${
+                mode === 'combined'
+                  ? 'text-foreground'
+                  : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+              }`}
+            >
+              Combined
+            </Link>
+          </nav>
         </header>
 
         {/* Search */}
@@ -90,8 +132,8 @@ export function ListeningPage({ title }: ListeningPageProps) {
           />
         </div>
 
-        {/* Translation toggle — English only */}
-        {!isArabic && (
+        {/* Translation toggle — English and Combined modes */}
+        {(mode === 'english' || mode === 'combined') && (
           <div className="flex items-center justify-end mb-6">
             <button
               id="translation-toggle"
@@ -121,21 +163,20 @@ export function ListeningPage({ title }: ListeningPageProps) {
           </div>
         )}
 
-        {/* Translation caption — English only, controlled by toggle */}
-        {!isArabic && <TranslationCaption show={showTranslation} />}
+        {/* Translation caption — English and Combined modes */}
+        {(mode === 'english' || mode === 'combined') && (
+          <TranslationCaption show={showTranslation} />
+        )}
 
         {/* Start Playing Button */}
         <div className="flex flex-col items-center justify-center mb-12 gap-4 h-[72px]">
           {(() => {
-            const progress = savedProgress[language];
-            const progressSurah = progress ? surahs.find(s => s.id === progress.surahId) : null;
-            
-            // If they explicitly selected a Surah that isn't currently playing
-            if (selectedSurahId && (currentSurahId !== selectedSurahId || currentLanguage !== language)) {
+            // If they explicitly selected a Surah that isn't currently playing in this mode
+            if (selectedSurahId && (currentSurahId !== selectedSurahId || currentLanguage !== mode)) {
               return (
-                <button 
+                <button
                   className="flex items-center gap-3 px-8 py-4 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-full hover:bg-neutral-800 dark:hover:bg-white transition-colors"
-                  onClick={() => playSurah(selectedSurahId, language)}
+                  onClick={() => playSurah(selectedSurahId, mode)}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -145,38 +186,47 @@ export function ListeningPage({ title }: ListeningPageProps) {
               );
             }
 
-            // If there's progress and they haven't overridden it by selecting a Surah
-            if (progress && progressSurah && (currentSurahId === null || currentLanguage !== language)) {
+            // If there's saved progress and this mode isn't active yet
+            if (progress && progressSurah && !isCurrentModeActive) {
               return (
                 <div className="flex flex-col items-center gap-3">
                   <div className="text-center text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                    <span className="block text-neutral-800 dark:text-neutral-200">{progressSurah.englishName}</span>
-                    <span className="block font-light">
-                      {Math.floor(progress.position / 60)}:{Math.floor(progress.position % 60).toString().padStart(2, '0')}
+                    <span className="block text-neutral-800 dark:text-neutral-200">
+                      {progressSurah.englishName}
                     </span>
+                    <span className="block font-light">{resumeSubtitle(progress)}</span>
                   </div>
-                  <button 
+                  <button
                     className="flex items-center gap-3 px-8 py-4 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-full hover:bg-neutral-800 dark:hover:bg-white transition-colors"
                     onClick={() => {
                       setSelectedSurahId(progress.surahId);
-                      playSurah(progress.surahId, language, progress.position);
+                      // For combined mode: startTime=0, resume position is restored
+                      // from savedProgressRef in the queue fetch effect.
+                      // For Arabic/English: restore audio seek position.
+                      playSurah(
+                        progress.surahId,
+                        mode,
+                        mode !== 'combined' ? progress.position : 0,
+                      );
                     }}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                       <polygon points="5 3 19 12 5 21 5 3"></polygon>
                     </svg>
-                    <span className="font-medium tracking-wide text-sm uppercase">Continue Listening</span>
+                    <span className="font-medium tracking-wide text-sm uppercase">
+                      Continue Listening
+                    </span>
                   </button>
                 </div>
               );
             }
 
-            // If nothing is playing and no progress, show default Start Listening (Surah 1)
-            if (currentSurahId === null || currentLanguage !== language) {
+            // Nothing playing and no progress — default Start Listening (Surah 1)
+            if (!isCurrentModeActive) {
               return (
-                <button 
+                <button
                   className="flex items-center gap-3 px-8 py-4 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-full hover:bg-neutral-800 dark:hover:bg-white transition-colors"
-                  onClick={() => playSurah(1, language)}
+                  onClick={() => playSurah(1, mode)}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -186,8 +236,6 @@ export function ListeningPage({ title }: ListeningPageProps) {
               );
             }
 
-            // Hide the button container logic is handled by setting a fixed height container above
-            // and returning null here, so the layout doesn't jump aggressively if possible.
             return null;
           })()}
         </div>
@@ -195,25 +243,37 @@ export function ListeningPage({ title }: ListeningPageProps) {
         {/* Surah List */}
         <div className="flex flex-col gap-2">
           {filteredSurahs.map((surah) => {
-            const isPlayingThis = currentSurahId === surah.id && currentLanguage === language;
+            const isPlayingThis = currentSurahId === surah.id && currentLanguage === mode;
             const isSelected = selectedSurahId === surah.id;
             const isActive = isPlayingThis || isSelected;
-            
+
             return (
               <button
                 key={surah.id}
                 onClick={() => handleSurahClick(surah.id)}
                 className={`flex items-center justify-between p-4 rounded-xl transition-all duration-300 ${
-                  isActive 
-                    ? 'bg-neutral-100 dark:bg-neutral-800' 
+                  isActive
+                    ? 'bg-neutral-100 dark:bg-neutral-800'
                     : 'hover:bg-neutral-50 dark:hover:bg-neutral-900'
                 }`}
               >
                 <div className="flex items-center gap-6">
-                  <span className={`font-light w-8 text-left ${isActive ? 'text-neutral-900 dark:text-white font-medium' : 'text-neutral-400 dark:text-neutral-500'}`}>
+                  <span
+                    className={`font-light w-8 text-left ${
+                      isActive
+                        ? 'text-neutral-900 dark:text-white font-medium'
+                        : 'text-neutral-400 dark:text-neutral-500'
+                    }`}
+                  >
                     {surah.id.toString().padStart(2, '0')}
                   </span>
-                  <span className={`font-medium ${isActive ? 'text-neutral-900 dark:text-white' : 'text-neutral-800 dark:text-neutral-300'}`}>
+                  <span
+                    className={`font-medium ${
+                      isActive
+                        ? 'text-neutral-900 dark:text-white'
+                        : 'text-neutral-800 dark:text-neutral-300'
+                    }`}
+                  >
                     {surah.englishName}
                   </span>
                   {isPlayingThis && isPlaying && (

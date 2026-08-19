@@ -29,14 +29,23 @@ interface TranslationState {
  * Follows the English audio's currentSurahId + currentAyahNumber from
  * AudioContext and surfaces the matching Rowwad (english_rwwad) translation.
  *
+ * Active when:
+ *  - currentLanguage === 'english'  (English-only mode)
+ *  - currentLanguage === 'combined' AND combinedAyahLang === 'english'
+ *    (English half of combined mode)
+ *
  * Design rules:
  *  - Never blocks or restarts audio.
  *  - Loads the full Surah translation once, then serves per-Ayah from cache.
  *  - Race-condition-safe: ignores responses from superseded fetch requests.
- *  - Only active when currentLanguage === 'english'.
  */
 export function useTranslation(): TranslationState {
-  const { currentSurahId, currentAyahNumber, currentLanguage } = useAudio();
+  const { currentSurahId, currentAyahNumber, currentLanguage, combinedAyahLang } = useAudio();
+
+  // Active when English-only mode OR English half of combined mode
+  const isEnglishActive =
+    currentLanguage === 'english' ||
+    (currentLanguage === 'combined' && combinedAyahLang === 'english');
 
   // Per-Surah cache: surahId → sorted ayah translations
   const surahCacheRef = useRef<Map<number, AyahTranslation[]>>(new Map());
@@ -62,12 +71,12 @@ export function useTranslation(): TranslationState {
 
   // ─────────────────────────────────────────────────────────────────────────
   // Effect 1: Load the Surah's translation data
-  //   Runs when surahId or language changes.
+  //   Runs when surahId or active-language status changes.
   //   Does NOT run per-Ayah — Ayah selection is derived in Effect 2.
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Only active for English
-    if (currentLanguage !== 'english' || !currentSurahId) {
+    // Only active for English or English half of combined
+    if (!isEnglishActive || !currentSurahId) {
       setTranslationText(null);
       setTranslationError(null);
       setIsLoadingTranslation(false);
@@ -123,7 +132,7 @@ export function useTranslation(): TranslationState {
         console.error('[useTranslation] Fetch failed:', err);
         setIsLoadingTranslation(false);
         setTranslationError(
-          err instanceof Error ? err.message : 'Failed to load translation'
+          err instanceof Error ? err.message : 'Failed to load translation',
         );
       }
     })();
@@ -133,7 +142,7 @@ export function useTranslation(): TranslationState {
     };
   // retryCounter intentionally included to allow manual retry
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSurahId, currentLanguage, retryCounter]);
+  }, [currentSurahId, isEnglishActive, retryCounter]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Effect 2: Derive the current Ayah's text from the cached Surah data.
@@ -141,11 +150,13 @@ export function useTranslation(): TranslationState {
   //   This is a pure read — no network I/O.
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (
-      currentLanguage !== 'english' ||
-      !currentSurahId ||
-      !currentAyahNumber
-    ) {
+    if (!isEnglishActive || !currentSurahId || !currentAyahNumber) {
+      // Clear text when switching away from English half (e.g. Arabic half in combined)
+      if (!isEnglishActive) {
+        setTranslationText(null);
+        setTranslationSurahId(null);
+        setTranslationAyahNumber(null);
+      }
       return;
     }
 
@@ -165,11 +176,10 @@ export function useTranslation(): TranslationState {
       // Ayah not found in translation data (shouldn't normally happen)
       setTranslationText(null);
     }
-  }, [currentSurahId, currentAyahNumber, currentLanguage, isLoadingTranslation]);
-  //                                                        ^^^^^^^^^^^^^^^^^^^
+  }, [currentSurahId, currentAyahNumber, isEnglishActive, isLoadingTranslation]);
+  //                                                        ^^^^^^^^^^^^^^^^^^
   // isLoadingTranslation acts as a proxy "trigger" for when the cache is freshly
-  // populated (it flips from true→false after a successful fetch). This avoids
-  // the need to store the cache contents in React state.
+  // populated (it flips from true→false after a successful fetch).
 
   return {
     translationText,

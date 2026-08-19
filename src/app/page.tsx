@@ -20,31 +20,97 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Choices Section */}
-        <div className="flex flex-col md:flex-row gap-8 w-full justify-center px-4">
-          <Link
-            href="/listen/arabic"
-            className="flex-1 group flex flex-col items-center justify-center p-14 border border-neutral-100 dark:border-neutral-800 rounded-3xl hover:border-neutral-200 dark:hover:border-neutral-700 hover:shadow-sm dark:hover:bg-neutral-900 bg-white dark:bg-[#111] transition-all duration-300 ease-out"
-          >
-            <span className="text-4xl md:text-5xl mb-6 text-neutral-800 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white transition-colors">
-              العربية
-            </span>
-            <span className="text-sm font-medium tracking-wider text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors uppercase">
-              Arabic Recitation
-            </span>
-          </Link>
+        {/* Mode Selection */}
+        <div className="w-full px-4">
+          <p className="text-center text-xs font-medium tracking-widest uppercase text-neutral-400 dark:text-neutral-500 mb-8">
+            What would you like to listen to?
+          </p>
 
-          <Link
-            href="/listen/english"
-            className="flex-1 group flex flex-col items-center justify-center p-14 border border-neutral-100 dark:border-neutral-800 rounded-3xl hover:border-neutral-200 dark:hover:border-neutral-700 hover:shadow-sm dark:hover:bg-neutral-900 bg-white dark:bg-[#111] transition-all duration-300 ease-out"
-          >
-            <span className="text-4xl md:text-5xl font-light mb-6 text-neutral-800 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white transition-colors">
-              English
-            </span>
-            <span className="text-sm font-medium tracking-wider text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors uppercase">
-              English Translation
-            </span>
-          </Link>
+          <div className="flex flex-col gap-4 w-full">
+            {/* Arabic Recitation */}
+            <Link
+              href="/listen/arabic"
+              className="group flex items-center justify-between p-6 border border-neutral-100 dark:border-neutral-800 rounded-2xl hover:border-neutral-200 dark:hover:border-neutral-700 hover:shadow-sm dark:hover:bg-neutral-900 bg-white dark:bg-[#111] transition-all duration-300 ease-out"
+            >
+              <div className="flex flex-col">
+                <span className="text-2xl font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white transition-colors mb-1">
+                  العربية
+                </span>
+                <span className="text-xs font-medium tracking-wider text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors uppercase">
+                  Arabic Recitation
+                </span>
+              </div>
+              <svg
+                className="text-neutral-300 dark:text-neutral-700 group-hover:text-neutral-400 dark:group-hover:text-neutral-500 transition-colors"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </Link>
+
+            {/* English Translation */}
+            <Link
+              href="/listen/english"
+              className="group flex items-center justify-between p-6 border border-neutral-100 dark:border-neutral-800 rounded-2xl hover:border-neutral-200 dark:hover:border-neutral-700 hover:shadow-sm dark:hover:bg-neutral-900 bg-white dark:bg-[#111] transition-all duration-300 ease-out"
+            >
+              <div className="flex flex-col">
+                <span className="text-2xl font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white transition-colors mb-1">
+                  English
+                </span>
+                <span className="text-xs font-medium tracking-wider text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors uppercase">
+                  English Translation
+                </span>
+              </div>
+              <svg
+                className="text-neutral-300 dark:text-neutral-700 group-hover:text-neutral-400 dark:group-hover:text-neutral-500 transition-colors"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </Link>
+
+            {/* Arabic + English Combined */}
+            <Link
+              href="/listen/combined"
+              className="group flex items-center justify-between p-6 border border-neutral-100 dark:border-neutral-800 rounded-2xl hover:border-neutral-200 dark:hover:border-neutral-700 hover:shadow-sm dark:hover:bg-neutral-900 bg-white dark:bg-[#111] transition-all duration-300 ease-out"
+            >
+              <div className="flex flex-col">
+                <span className="text-2xl font-medium text-neutral-800 dark:text-neutral-200 group-hover:text-black dark:group-hover:text-white transition-colors mb-1">
+                  العربية · English
+                </span>
+                <span className="text-xs font-medium tracking-wider text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors uppercase">
+                  Arabic Recitation · English Translation
+                </span>
+              </div>
+              <svg
+                className="text-neutral-300 dark:text-neutral-700 group-hover:text-neutral-400 dark:group-hover:text-neutral-500 transition-colors"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </Link>
+          </div>
         </div>
       </main>
     </div>
