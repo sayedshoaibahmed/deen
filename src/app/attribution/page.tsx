@@ -29,6 +29,23 @@ export default function AttributionPage() {
           </ul>
         </div>
         
+        <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl p-8 md:p-12 text-left mb-8 transition-colors duration-500">
+          <h2 className="text-xl font-medium mb-4">Urdu Quran Audio</h2>
+          <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed mb-6">
+            The Urdu audio translation (Shamshad Ali Khan) used in the combined playback mode is provided by Al Quran Cloud.
+          </p>
+          <ul className="space-y-4 text-sm text-neutral-600 dark:text-neutral-400">
+            <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Audio Source:</strong>{' '}
+              <a href="https://islamic.network" target="_blank" rel="noopener noreferrer" className="hover:text-black dark:hover:text-white underline decoration-neutral-300 dark:decoration-neutral-700 underline-offset-4 transition-colors">Al Quran Cloud (islamic.network)</a>
+            </li>
+            <li>
+              <strong className="text-neutral-900 dark:text-neutral-100">Edition key:</strong>{' '}
+              <code className="text-xs font-mono bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">ur.khan</code>
+            </li>
+          </ul>
+        </div>
+        
         <Link 
           href="/"
           className="inline-flex items-center text-sm font-medium text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 transition-colors"

@@ -18,6 +18,8 @@ export function ListeningPage({ title }: ListeningPageProps) {
   const pathname = usePathname();
   const mode: Language = pathname.includes('/arabic')
     ? 'arabic'
+    : pathname.includes('/combined-urdu')
+    ? 'combined-urdu'
     : pathname.includes('/combined')
     ? 'combined'
     : 'english';
@@ -59,6 +61,10 @@ export function ListeningPage({ title }: ListeningPageProps) {
       const langLabel = p.combinedLang === 'english' ? 'English' : 'Arabic';
       return `Ayah ${p.ayahId} · ${langLabel}`;
     }
+    if (mode === 'combined-urdu' && p.ayahId) {
+      const langLabel = p.combinedLang === 'urdu' ? 'Urdu' : 'Arabic';
+      return `Ayah ${p.ayahId} · ${langLabel}`;
+    }
     return `${Math.floor(p.position / 60)}:${Math.floor(p.position % 60)
       .toString()
       .padStart(2, '0')}`;
@@ -82,11 +88,11 @@ export function ListeningPage({ title }: ListeningPageProps) {
           <h1 className="text-2xl font-light text-neutral-800 dark:text-neutral-200 mb-6">{title}</h1>
 
           {/* Compact Language / Mode Switcher */}
-          <nav aria-label="Listening mode" className="flex items-center gap-4 text-sm font-medium tracking-wide">
+          <nav aria-label="Listening mode" className="flex flex-wrap justify-center items-center gap-x-4 gap-y-3 text-sm font-medium tracking-wide">
             <Link
               href="/listen/arabic"
               aria-current={mode === 'arabic' ? 'page' : undefined}
-              className={`transition-colors ${
+              className={`whitespace-nowrap transition-colors ${
                 mode === 'arabic'
                   ? 'text-foreground'
                   : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
@@ -98,7 +104,7 @@ export function ListeningPage({ title }: ListeningPageProps) {
             <Link
               href="/listen/english"
               aria-current={mode === 'english' ? 'page' : undefined}
-              className={`transition-colors ${
+              className={`whitespace-nowrap transition-colors ${
                 mode === 'english'
                   ? 'text-foreground'
                   : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
@@ -110,13 +116,25 @@ export function ListeningPage({ title }: ListeningPageProps) {
             <Link
               href="/listen/combined"
               aria-current={mode === 'combined' ? 'page' : undefined}
-              className={`transition-colors ${
+              className={`whitespace-nowrap transition-colors ${
                 mode === 'combined'
                   ? 'text-foreground'
                   : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
               }`}
             >
-              Combined
+              Arabic + English
+            </Link>
+            <span className="text-neutral-300 dark:text-neutral-700" aria-hidden="true">|</span>
+            <Link
+              href="/listen/combined-urdu"
+              aria-current={mode === 'combined-urdu' ? 'page' : undefined}
+              className={`whitespace-nowrap transition-colors ${
+                mode === 'combined-urdu'
+                  ? 'text-foreground'
+                  : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+              }`}
+            >
+              Arabic + Urdu
             </Link>
           </nav>
         </header>
@@ -132,7 +150,7 @@ export function ListeningPage({ title }: ListeningPageProps) {
           />
         </div>
 
-        {/* Translation toggle — English and Combined modes */}
+        {/* Translation toggle — English and Combined (English) modes only */}
         {(mode === 'english' || mode === 'combined') && (
           <div className="flex items-center justify-end mb-6">
             <button
@@ -163,7 +181,7 @@ export function ListeningPage({ title }: ListeningPageProps) {
           </div>
         )}
 
-        {/* Translation caption — English and Combined modes */}
+        {/* Translation caption — English and Combined (English) modes only */}
         {(mode === 'english' || mode === 'combined') && (
           <TranslationCaption show={showTranslation} />
         )}
@@ -200,13 +218,13 @@ export function ListeningPage({ title }: ListeningPageProps) {
                     className="flex items-center gap-3 px-8 py-4 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-full hover:bg-neutral-800 dark:hover:bg-white transition-colors"
                     onClick={() => {
                       setSelectedSurahId(progress.surahId);
-                      // For combined mode: startTime=0, resume position is restored
+                      // For combined modes: startTime=0, resume position is restored
                       // from savedProgressRef in the queue fetch effect.
                       // For Arabic/English: restore audio seek position.
                       playSurah(
                         progress.surahId,
                         mode,
-                        mode !== 'combined' ? progress.position : 0,
+                        (mode !== 'combined' && mode !== 'combined-urdu') ? progress.position : 0,
                       );
                     }}
                   >
@@ -296,6 +314,21 @@ export function ListeningPage({ title }: ListeningPageProps) {
             </p>
           )}
         </div>
+
+        {/* Attribution — Urdu mode */}
+        {mode === 'combined-urdu' && (
+          <p className="mt-10 text-center text-xs text-neutral-400 dark:text-neutral-500 font-light">
+            Urdu translation audio: Shamshad Ali Khan, via{' '}
+            <a
+              href="https://islamic.network"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+            >
+              Al Quran Cloud (islamic.network)
+            </a>
+          </p>
+        )}
 
       </div>
     </div>

@@ -27,6 +27,7 @@ export function BottomPlayer() {
     audioError,
     retryAudio,
     englishQueue,
+    urduQueue,
     currentAyahNumber,
     combinedAyahLang,
   } = useAudio();
@@ -40,10 +41,18 @@ export function BottomPlayer() {
   let progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   if (currentLanguage === 'combined' && englishQueue && englishQueue.length > 0 && currentAyahNumber) {
-    // Combined: 2 steps per ayah (Arabic + English)
+    // Combined (English): 2 steps per ayah (Arabic + English)
     const totalSteps = englishQueue.length * 2;
     const currentAyahIdx = currentAyahNumber - 1; // 0-indexed
     const langOffset = combinedAyahLang === 'english' ? 1 : 0;
+    const currentStep = currentAyahIdx * 2 + langOffset;
+    const ayahProgress = duration > 0 ? currentTime / duration : 0;
+    progressPercent = ((currentStep + ayahProgress) / totalSteps) * 100;
+  } else if (currentLanguage === 'combined-urdu' && urduQueue && urduQueue.length > 0 && currentAyahNumber) {
+    // Combined (Urdu): 2 steps per ayah (Arabic + Urdu)
+    const totalSteps = urduQueue.length * 2;
+    const currentAyahIdx = currentAyahNumber - 1; // 0-indexed
+    const langOffset = combinedAyahLang === 'urdu' ? 1 : 0;
     const currentStep = currentAyahIdx * 2 + langOffset;
     const ayahProgress = duration > 0 ? currentTime / duration : 0;
     progressPercent = ((currentStep + ayahProgress) / totalSteps) * 100;
@@ -55,7 +64,7 @@ export function BottomPlayer() {
   }
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (currentLanguage === 'english' || currentLanguage === 'combined') {
+    if (currentLanguage === 'english' || currentLanguage === 'combined' || currentLanguage === 'combined-urdu') {
       // Seeking across ayahs based on a combined progress bar is complex
       // without knowing individual durations. Disabled for now.
       return;
@@ -87,6 +96,14 @@ export function BottomPlayer() {
     }
     if (currentLanguage === 'combined' && currentAyahNumber) {
       const langLabel = combinedAyahLang === 'english' ? 'English' : 'Arabic';
+      return (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+          {langLabel} · Ayah {currentAyahNumber}
+        </p>
+      );
+    }
+    if (currentLanguage === 'combined-urdu' && currentAyahNumber) {
+      const langLabel = combinedAyahLang === 'urdu' ? 'Urdu' : 'Arabic';
       return (
         <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
           {langLabel} · Ayah {currentAyahNumber}
